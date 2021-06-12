@@ -66,10 +66,6 @@
 			<id>scijava.public</id>
 			<url>https://maven.scijava.org/content/groups/public</url>
 		</repository>
-		<repository>
-			<id>jitpack.io</id>
-			<url>https://jitpack.io</url>
-		</repository>
 	</repositories>
 
 	<scm>
@@ -109,9 +105,8 @@ Jean-Yves Tinevez and Michael Zinsmaier.</license.copyrightOwners>
 
 	<dependencies>
 		<dependency>
-			<groupId>com.github.imglib</groupId>
+			<groupId>net.imglib2</groupId>
 			<artifactId>imglib2</artifactId>
-			<version>${imglib2.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>net.imglib2</groupId>
