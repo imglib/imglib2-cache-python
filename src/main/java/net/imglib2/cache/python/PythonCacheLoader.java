@@ -40,9 +40,7 @@ import java.util.stream.Stream;
 
 public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A>> implements CacheLoader<Long, Cell<A>> {
     private final CellGrid grid;
-    private final int numWorkers;
     private final String code;
-    private final String init;
     private final T t;
     private final A a;
     private final WorkerQueue workerQueue;
@@ -50,9 +48,7 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 
     public PythonCacheLoader(CellGrid grid, int numWorkers, String code, String init, T t, A a, Function<Interval, Buffer>... inputGenerators) throws InterruptedException {
         this.grid = grid;
-        this.numWorkers = numWorkers;
         this.code = code;
-        this.init = init;
         this.workerQueue = new WorkerQueue(numWorkers, init);
         this.t = t;
         this.a = a;
