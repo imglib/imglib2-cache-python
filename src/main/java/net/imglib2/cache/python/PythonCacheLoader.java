@@ -74,7 +74,7 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 
 
         try {
-            workerQueue.submitAndAwaitCopmletion(asTypedBuffer(buffer, t),inputs, key, min, max, code);
+            workerQueue.submitAndAwaitCopmletion(asTypedBuffer(buffer, t), inputs, key, min, max, code);
         } catch (final InterruptedException e) {
             throw new RuntimeException(e);
         }
@@ -107,7 +107,7 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
     }
 
     private static ByteBuffer appropriateDirectBuffer(final NativeType<?> t, final Interval interval) {
-        final double fractionalBytesPerEntity= getFractionalBytesPerEntity(t);
+        final double fractionalBytesPerEntity = getFractionalBytesPerEntity(t);
         final long numElements = Intervals.numElements(interval);
         return ByteBuffer.allocateDirect((int) Math.ceil(numElements * fractionalBytesPerEntity));
     }
@@ -205,7 +205,7 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
         final String code = String.join(
                 "\n",
                 "block.data[...] = np.mean(block.inputs[0])"
-                );
+        );
         final long[] dims = {5, 6};
         final int[] bs = {5, 1};
         final CellGrid grid = new CellGrid(dims, bs);
@@ -216,6 +216,6 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
         final PythonCacheLoader<FloatType, FloatBufferAccess> loader = PythonCacheLoader.withInputs(grid, 3, code, init, new FloatType(), new FloatBufferAccess(1), Views.extendZero(range));
         final Cache<Long, Cell<FloatBufferAccess>> cache = new GuardedStrongRefLoaderCache<Long, Cell<FloatBufferAccess>>(30).withLoader(loader);
         final CachedCellImg<FloatType, FloatBufferAccess> img = new CachedCellImg<>(grid, new FloatType(), cache, new FloatBufferAccess());
-        LoopBuilder.setImages(range, img).forEachPixel((i1, i2) -> System.out.println(i1 + " "+ i2));
+        LoopBuilder.setImages(range, img).forEachPixel((i1, i2) -> System.out.println(i1 + " " + i2));
     }
 }
