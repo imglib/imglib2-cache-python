@@ -37,4 +37,4 @@ jobs:
       - name: Test
         run: PYTHONHOME=$(dirname $(dirname $(which python))) mvn --batch-mode test
       - name: Package
-        run: mvn --batch-mode package
+        run: PYTHONHOME=$(dirname $(dirname $(which python))) mvn --batch-mode package
