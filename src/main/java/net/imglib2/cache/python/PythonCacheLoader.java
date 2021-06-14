@@ -1,18 +1,12 @@
 package net.imglib2.cache.python;
 
-import net.imglib2.Cursor;
 import net.imglib2.FinalInterval;
 import net.imglib2.Interval;
 import net.imglib2.RandomAccessible;
 import net.imglib2.RandomAccessibleInterval;
-import net.imglib2.cache.Cache;
 import net.imglib2.cache.CacheLoader;
-import net.imglib2.cache.img.CachedCellImg;
-import net.imglib2.cache.ref.GuardedStrongRefLoaderCache;
 import net.imglib2.img.NativeImg;
 import net.imglib2.img.array.ArrayImg;
-import net.imglib2.img.array.ArrayImgs;
-import net.imglib2.img.basictypeaccess.array.DoubleArray;
 import net.imglib2.img.basictypeaccess.nio.BufferAccess;
 import net.imglib2.img.basictypeaccess.nio.ByteBufferAccess;
 import net.imglib2.img.basictypeaccess.nio.CharBufferAccess;
@@ -25,37 +19,61 @@ import net.imglib2.img.cell.Cell;
 import net.imglib2.img.cell.CellGrid;
 import net.imglib2.loops.LoopBuilder;
 import net.imglib2.type.NativeType;
-import net.imglib2.type.numeric.real.DoubleType;
-import net.imglib2.type.numeric.real.FloatType;
 import net.imglib2.util.Intervals;
 import net.imglib2.util.Util;
 import net.imglib2.view.Views;
 
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
-import java.util.function.Function;
-import java.util.stream.Stream;
 
 public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A>> implements CacheLoader<Long, Cell<A>> {
+
 	private final CellGrid grid;
 	private final String code;
 	private final T t;
 	private final A a;
-	private final WorkerQueue workerQueue;
-	private final List<Function<Interval, Buffer>> inputGenerators;
+	@SuppressWarnings("rawtypes")
+	private final PythonWorkerQueue workerQueue;
+	private final Halo halo;
+	private final List<? extends RandomAccessible<? extends NativeType<?>>> inputs;
 
-	public PythonCacheLoader(CellGrid grid, int numWorkers, String code, String init, T t, A a, Function<Interval, Buffer>... inputGenerators) throws InterruptedException {
+	@SuppressWarnings("rawtypes")
+	public PythonCacheLoader(
+			CellGrid grid,
+			int numWorkers,
+			String code,
+			String init,
+			T t,
+			A a,
+			Halo halo,
+			Collection<? extends RandomAccessible<? extends NativeType<?>>> inputs) throws InterruptedException {
 		this.grid = grid;
 		this.code = code;
-		this.workerQueue = new WorkerQueue(numWorkers, init);
+		this.workerQueue = new PythonWorkerQueue(numWorkers, init);
 		this.t = t;
 		this.a = a;
-		this.inputGenerators = Arrays.asList(inputGenerators);
+		this.halo = halo == null ? Halo.empty(grid.numDimensions()) : halo;
+		this.inputs = new ArrayList<>(inputs);
+	}
+
+	public PythonCacheLoader(
+			CellGrid grid,
+			int numWorkers,
+			String code,
+			String init,
+			T t,
+			A a,
+			Halo halo,
+			RandomAccessible<? extends NativeType<?>>... inputs) throws InterruptedException {
+		this(grid, numWorkers, code, init, t, a, halo, Arrays.asList(inputs));
 	}
 
 	@Override
+	@SuppressWarnings({"unchecked", "rawtypes"})
 	public Cell<A> get(final Long key) {
 		final long[] min = new long[grid.numDimensions()];
 		final long[] max = new long[min.length];
@@ -66,44 +84,26 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 		for (int d = 0; d < min.length; ++d)
 			max[d] = min[d] + dim[d] - 1;
 		final Interval interval = new FinalInterval(min, max);
+		final Interval extendedInterval = halo.extendInterval(interval);
 
 		final ByteBuffer buffer = appropriateDirectBuffer(t, interval);
-		final A access = a.newInstance(buffer, true);
 
-		final Buffer[] inputs = this.inputGenerators.stream().map(f -> f.apply(interval)).toArray(Buffer[]::new);
+		final Buffer[] inputs = this.inputs
+				.stream()
+				.map(g -> copyToBuffer((RandomAccessible) g, extendedInterval))
+				.toArray(Buffer[]::new);
 
 
+		boolean isValid = true;
 		try {
-			workerQueue.submitAndAwaitCopmletion(asTypedBuffer(buffer, t), inputs, key, min, max, code);
-		} catch (final InterruptedException e) {
-			throw new RuntimeException(e);
+			workerQueue.submitAndAwaitCopmletion(asTypedBuffer(buffer, t), inputs, key, min, max, halo, code);
+		} catch (final Exception e) {
+			isValid = false;
+			e.printStackTrace();
 		}
 
+		final A access = a.newInstance(buffer, isValid);
 		return new Cell<>(dim, min, access);
-	}
-
-	public static class RandomAccessibleInput implements Function<Interval, Buffer> {
-		private final RandomAccessible<? extends NativeType<?>> source;
-
-		public RandomAccessibleInput(RandomAccessible<? extends NativeType<?>> source) {
-			this.source = source;
-		}
-
-		@Override
-		public Buffer apply(Interval interval) {
-			return copyToBuffer((RandomAccessible) source, interval);
-		}
-	}
-
-	public static <T extends NativeType<T>, A extends BufferAccess<A>> PythonCacheLoader<T, A> withInputs(
-			final CellGrid grid,
-			final int numWorkers,
-			final String code,
-			final String init,
-			final T t,
-			final A a,
-			final RandomAccessible<? extends NativeType<?>>... inputs) throws InterruptedException {
-		return new PythonCacheLoader<>(grid, numWorkers, code, init, t, a, Stream.of(inputs).map(RandomAccessibleInput::new).toArray(RandomAccessibleInput[]::new));
 	}
 
 	private static ByteBuffer appropriateDirectBuffer(final NativeType<?> t, final Interval interval) {
@@ -159,6 +159,7 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 		}
 	}
 
+	@SuppressWarnings("unchecked")
 	private static <A extends BufferAccess<A>> A asAccess(final ByteBuffer buffer, final NativeType<?> t) {
 		switch (t.getNativeTypeFactory().getPrimitiveType()) {
 			case BOOLEAN:
@@ -191,6 +192,7 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 		return copyToBuffer(source, buffer);
 	}
 
+	@SuppressWarnings({"unchecked", "rawtypes"})
 	private static <T extends NativeType<T>, A extends BufferAccess<A>> Buffer copyToBuffer(final RandomAccessibleInterval<T> source, final ByteBuffer buffer) {
 		final T t = Util.getTypeFromInterval(source).createVariable();
 		final A a = asAccess(buffer, t);
@@ -198,24 +200,5 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 		target.setLinkedType((T) t.getNativeTypeFactory().createLinkedType((NativeImg) target));
 		LoopBuilder.setImages(target, source).forEachPixel(T::set);
 		return asTypedBuffer(buffer, t);
-	}
-
-	public static void main(String... args) throws InterruptedException {
-		final String init = "import numpy as np";
-		final String code = String.join(
-				"\n",
-				"block.data[...] = np.mean(block.inputs[0])"
-		);
-		final long[] dims = {5, 6};
-		final int[] bs = {5, 1};
-		final CellGrid grid = new CellGrid(dims, bs);
-		final ArrayImg<DoubleType, DoubleArray> range = ArrayImgs.doubles(dims);
-		final Cursor<DoubleType> rangeCursor = range.cursor();
-		for (int i = 0; rangeCursor.hasNext(); ++i)
-			rangeCursor.next().setReal(i);
-		final PythonCacheLoader<FloatType, FloatBufferAccess> loader = PythonCacheLoader.withInputs(grid, 3, code, init, new FloatType(), new FloatBufferAccess(1), Views.extendZero(range));
-		final Cache<Long, Cell<FloatBufferAccess>> cache = new GuardedStrongRefLoaderCache<Long, Cell<FloatBufferAccess>>(30).withLoader(loader);
-		final CachedCellImg<FloatType, FloatBufferAccess> img = new CachedCellImg<>(grid, new FloatType(), cache, new FloatBufferAccess());
-		LoopBuilder.setImages(range, img).forEachPixel((i1, i2) -> System.out.println(i1 + " " + i2));
 	}
 }

@@ -44,11 +44,39 @@ public class PythonCacheLoaderTest {
 
 		final CellGrid grid = new CellGrid(dims, bs);
 		final ArrayImg<DoubleType, DoubleArray> range = ArrayImgs.doubles(rangeData, dims);
-		final PythonCacheLoader<FloatType, FloatBufferAccess> loader = PythonCacheLoader.withInputs(grid, 3, code, init, new FloatType(), new FloatBufferAccess(1), Views.extendZero(range));
+		final PythonCacheLoader<FloatType, FloatBufferAccess> loader = new PythonCacheLoader<>(grid, 3, code, init, new FloatType(), new FloatBufferAccess(1), null, Views.extendZero(range));
 		final Cache<Long, Cell<FloatBufferAccess>> cache = new GuardedStrongRefLoaderCache<Long, Cell<FloatBufferAccess>>(30).withLoader(loader);
 		final CachedCellImg<FloatType, FloatBufferAccess> img = new CachedCellImg<>(grid, new FloatType(), cache, new FloatBufferAccess());
 		final double[] numpyAverages = StreamSupport.stream(Views.flatIterable(img).spliterator(), false).mapToDouble(FloatType::getRealDouble).toArray();
 			Assert.assertArrayEquals(averages, numpyAverages, 0.0);
+	}
+
+	/**
+	 * This test requires installation of Python with numpy and jep packages installed.
+	 * It may be necessary to set PYTHONHOME appropriately.
+	 */
+	@Test
+	public void testHalo() throws InterruptedException {
+		final double[] rangeData = {
+				0, 1, 2, 3, 4,
+				5, 6, 7, 8, 9
+		};
+		final int[] bs = {3, 1};
+		final long[] dims = {5, 2};
+
+		final String init = "import numpy as np";
+		final String code = String.join(
+				"\n",
+				"block.data[...] = block.inputs[0][block.halo]"
+		);
+
+		final CellGrid grid = new CellGrid(dims, bs);
+		final ArrayImg<DoubleType, DoubleArray> range = ArrayImgs.doubles(rangeData, dims);
+		final PythonCacheLoader<FloatType, FloatBufferAccess> loader = new PythonCacheLoader<>(grid, 3, code, init, new FloatType(), new FloatBufferAccess(1), new Halo(2, 3), Views.extendZero(range));
+		final Cache<Long, Cell<FloatBufferAccess>> cache = new GuardedStrongRefLoaderCache<Long, Cell<FloatBufferAccess>>(30).withLoader(loader);
+		final CachedCellImg<FloatType, FloatBufferAccess> img = new CachedCellImg<>(grid, new FloatType(), cache, new FloatBufferAccess());
+		final double[] numpyAverages = StreamSupport.stream(Views.flatIterable(img).spliterator(), false).mapToDouble(FloatType::getRealDouble).toArray();
+		Assert.assertArrayEquals(rangeData, numpyAverages, 0.0);
 	}
 
 }
