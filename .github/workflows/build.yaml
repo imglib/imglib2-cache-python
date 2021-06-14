@@ -32,5 +32,9 @@ jobs:
           packages: |
             numpy==1.20.3
             jep==3.9.1
-      - name: Build and execute unit tests
-        run: mvn --batch-mode clean package test
+      - name: Build
+        run: mvn --batch-mode clean compile
+      - name: Test
+        run: PYTHONHOME=$(dirname $(dirname $(which python))) mvn --batch-mode test
+      - name: Package
+        run: mvn --batch-mode package
