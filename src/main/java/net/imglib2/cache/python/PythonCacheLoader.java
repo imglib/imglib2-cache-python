@@ -36,12 +36,10 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 	private final String code;
 	private final T t;
 	private final A a;
-	@SuppressWarnings("rawtypes")
 	private final PythonWorkerQueue workerQueue;
 	private final Halo halo;
 	private final List<? extends RandomAccessible<? extends NativeType<?>>> inputs;
 
-	@SuppressWarnings("rawtypes")
 	public PythonCacheLoader(
 			CellGrid grid,
 			int numWorkers,
@@ -96,7 +94,9 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 
 		boolean isValid = true;
 		try {
-			workerQueue.submitAndAwaitCopmletion(asTypedBuffer(buffer, t), inputs, key, min, max, halo, code);
+			final PythonCacheLoaderBlockTask task =
+					new PythonCacheLoaderBlockTask(asTypedBuffer(buffer, t), inputs, key, min, max, halo, code);
+			workerQueue.submit(task).get();
 		} catch (final Exception e) {
 			isValid = false;
 			e.printStackTrace();
