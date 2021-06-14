@@ -57,21 +57,15 @@ public class PythonWorkerQueue implements AutoCloseable {
 
 		private boolean isClosed = false;
 		private final CountDownLatch pythonReady = new CountDownLatch(1);
+		private JepException initException = null;
 
-		Worker(BlockingQueue<PythonConsumer> queue, String init, String name) throws InterruptedException {
+		public Worker(BlockingQueue<PythonConsumer> queue, String init, String name) throws InterruptedException, JepException {
 			this.queue = queue;
 			this.init = init;
 			this.workerThread = new Thread(() -> {
-				final SharedInterpreter python;
-				try {
-					python = new SharedInterpreter();
-					initialize(python, this.init);
-				} catch (JepException e) {
-					throw new RuntimeException(e);
-				} finally {
-					pythonReady.countDown();
-				}
-
+				final SharedInterpreter python = createAndInitPython();
+				if (python == null)
+					return;
 				while (!this.isClosed) {
 					final PythonConsumer task = poll();
 					if (task == null)
@@ -90,6 +84,8 @@ public class PythonWorkerQueue implements AutoCloseable {
 				this.workerThread.setName(name);
 			this.workerThread.start();
 			pythonReady.await();
+			if (this.initException != null)
+				throw this.initException;
 		}
 
 
@@ -98,6 +94,20 @@ public class PythonWorkerQueue implements AutoCloseable {
 				return queue.poll(10, TimeUnit.MILLISECONDS);
 			} catch (InterruptedException e) {
 				return null;
+			}
+		}
+
+		private SharedInterpreter createAndInitPython() {
+			try {
+				final SharedInterpreter python = new SharedInterpreter();
+				initialize(python, this.init);
+				return python;
+			} catch (JepException e) {
+				this.initException = e;
+				close();
+				return null;
+			} finally {
+				pythonReady.countDown();
 			}
 		}
 
@@ -132,7 +142,15 @@ public class PythonWorkerQueue implements AutoCloseable {
 	private final List<Worker> workers = new ArrayList<>();
 	private final LinkedBlockingDeque<PythonConsumer> queue = new LinkedBlockingDeque<>();
 
-	public PythonWorkerQueue(final int numWorkers, final String init) throws InterruptedException {
+	public PythonWorkerQueue() throws InterruptedException, JepException {
+		this(1);
+	}
+
+	public PythonWorkerQueue(final int numWorkers) throws InterruptedException, JepException {
+		this(numWorkers, null);
+	}
+
+	public PythonWorkerQueue(final int numWorkers, final String init) throws InterruptedException, JepException {
 		this.init = init;
 		for (int w = 0; w < numWorkers; ++w) {
 			this.workers.add(new Worker(queue, this.init, "Python-" + w));
@@ -143,6 +161,10 @@ public class PythonWorkerQueue implements AutoCloseable {
 		final PythonExecution<T> r = new PythonExecution<>(task);
 		this.queue.add(r);
 		return new PythonFuture<>(r::getResultOrThrow, r.latch);
+	}
+
+	public PythonFuture<Void> submit(final PythonTask.Runnable task) {
+		return submit((PythonTask<Void>) task);
 	}
 
 	public void close() {

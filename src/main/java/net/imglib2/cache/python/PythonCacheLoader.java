@@ -1,5 +1,6 @@
 package net.imglib2.cache.python;
 
+import jep.JepException;
 import net.imglib2.FinalInterval;
 import net.imglib2.Interval;
 import net.imglib2.RandomAccessible;
@@ -48,7 +49,7 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 			T t,
 			A a,
 			Halo halo,
-			Collection<? extends RandomAccessible<? extends NativeType<?>>> inputs) throws InterruptedException {
+			Collection<? extends RandomAccessible<? extends NativeType<?>>> inputs) throws InterruptedException, JepException {
 		this.grid = grid;
 		this.code = code;
 		this.workerQueue = new PythonWorkerQueue(numWorkers, init);
@@ -66,7 +67,7 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 			T t,
 			A a,
 			Halo halo,
-			RandomAccessible<? extends NativeType<?>>... inputs) throws InterruptedException {
+			RandomAccessible<? extends NativeType<?>>... inputs) throws InterruptedException, JepException {
 		this(grid, numWorkers, code, init, t, a, halo, Arrays.asList(inputs));
 	}
 

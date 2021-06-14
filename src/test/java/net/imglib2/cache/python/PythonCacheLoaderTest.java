@@ -1,5 +1,6 @@
 package net.imglib2.cache.python;
 
+import jep.JepException;
 import net.imglib2.cache.Cache;
 import net.imglib2.cache.img.CachedCellImg;
 import net.imglib2.cache.ref.GuardedStrongRefLoaderCache;
@@ -24,7 +25,7 @@ public class PythonCacheLoaderTest {
 	 * It may be necessary to set PYTHONHOME appropriately.
 	 */
 	@Test
-	public void testNumpyCall() throws InterruptedException {
+	public void testNumpyCall() throws InterruptedException, JepException {
 		final double[] rangeData = {
 				0, 1, 2, 3, 4,
 				5, 6, 7, 8, 9
@@ -56,7 +57,7 @@ public class PythonCacheLoaderTest {
 	 * It may be necessary to set PYTHONHOME appropriately.
 	 */
 	@Test
-	public void testHalo() throws InterruptedException {
+	public void testHalo() throws InterruptedException, JepException {
 		final double[] rangeData = {
 				0, 1, 2, 3, 4,
 				5, 6, 7, 8, 9

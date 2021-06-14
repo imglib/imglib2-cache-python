@@ -5,6 +5,7 @@ import bdv.util.BdvOptions;
 import bdv.util.BdvStackSource;
 import bdv.util.volatiles.SharedQueue;
 import bdv.util.volatiles.VolatileViews;
+import jep.JepException;
 import net.imglib2.cache.Cache;
 import net.imglib2.cache.img.CachedCellImg;
 import net.imglib2.cache.python.Halo;
@@ -21,7 +22,7 @@ import net.imglib2.type.numeric.integer.LongType;
  * It may be necessary to set PYTHONHOME appropriately.
  */
 public class StarDist {
-	public static void main(String... args) throws InterruptedException {
+	public static void main(String... args) throws InterruptedException, JepException {
 		final String init = String.join(
 				"\n",
 				"from stardist.data import test_image_nuclei_2d",
