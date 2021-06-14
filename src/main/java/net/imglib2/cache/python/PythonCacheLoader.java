@@ -86,7 +86,8 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 
 		final ByteBuffer buffer = appropriateDirectBuffer(t, interval);
 
-		final Buffer[] inputs = this.inputs
+		// This redundant cast is necessary to compile with OpenJDK 8. Why?
+		final Buffer[] inputs = (Buffer[]) this.inputs
 				.stream()
 				.map(g -> copyToBuffer((RandomAccessible) g, extendedInterval))
 				.toArray(Buffer[]::new);
