@@ -101,6 +101,8 @@ Jean-Yves Tinevez and Michael Zinsmaier.</license.copyrightOwners>
 		<ninia.jep.version>3.9.1</ninia.jep.version>
 		<!-- NB: Use jitpack until next ImgLib2 release. -->
 		<imglib2.version>28cdf186da</imglib2.version>
+		<bigdataviewer-core.version>10.2.0</bigdataviewer-core.version>
+		<bigdataviewer-vistools.version>1.0.0-beta-28</bigdataviewer-vistools.version>
 	</properties>
 
 	<dependencies>
@@ -121,6 +123,11 @@ Jean-Yves Tinevez and Michael Zinsmaier.</license.copyrightOwners>
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>sc.fiji</groupId>
+			<artifactId>bigdataviewer-vistools</artifactId>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
