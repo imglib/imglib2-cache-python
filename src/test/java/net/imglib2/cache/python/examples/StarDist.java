@@ -6,13 +6,11 @@ import bdv.util.BdvStackSource;
 import bdv.util.volatiles.SharedQueue;
 import bdv.util.volatiles.VolatileViews;
 import jep.JepException;
-import net.imglib2.cache.Cache;
 import net.imglib2.cache.img.CachedCellImg;
 import net.imglib2.cache.python.Halo;
 import net.imglib2.cache.python.PythonCacheLoader;
-import net.imglib2.cache.ref.GuardedStrongRefLoaderCache;
+import net.imglib2.cache.python.PythonCacheLoaderQueue;
 import net.imglib2.img.basictypeaccess.nio.LongBufferAccess;
-import net.imglib2.img.cell.Cell;
 import net.imglib2.img.cell.CellGrid;
 import net.imglib2.type.numeric.integer.LongType;
 
@@ -47,14 +45,12 @@ public class StarDist {
 		final CellGrid grid = new CellGrid(dims, bs);
 		final PythonCacheLoader<LongType, LongBufferAccess> loader = new PythonCacheLoader<>(
 				grid,
-				3,
+				new PythonCacheLoaderQueue(3, init),
 				code,
-				init,
 				new LongType(),
 				new LongBufferAccess(1),
 				Halo.empty(2));
-		final Cache<Long, Cell<LongBufferAccess>> cache = new GuardedStrongRefLoaderCache<Long, Cell<LongBufferAccess>>(30).withLoader(loader);
-		final CachedCellImg<LongType, LongBufferAccess> img = new CachedCellImg<>(grid, new LongType(), cache, new LongBufferAccess());
+		final CachedCellImg<LongType, LongBufferAccess> img = loader.createCachedCellImg(30);
 
 		final BdvStackSource<?> bdv = BdvFunctions.show(
 				VolatileViews.wrapAsVolatile(img, new SharedQueue(10, 1)),

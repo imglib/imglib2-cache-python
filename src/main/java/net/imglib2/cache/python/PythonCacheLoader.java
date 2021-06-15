@@ -6,6 +6,9 @@ import net.imglib2.Interval;
 import net.imglib2.RandomAccessible;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.cache.CacheLoader;
+import net.imglib2.cache.LoaderCache;
+import net.imglib2.cache.img.CachedCellImg;
+import net.imglib2.cache.ref.GuardedStrongRefLoaderCache;
 import net.imglib2.img.NativeImg;
 import net.imglib2.img.array.ArrayImg;
 import net.imglib2.img.basictypeaccess.nio.BufferAccess;
@@ -37,22 +40,21 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 	private final String code;
 	private final T t;
 	private final A a;
-	private final PythonWorkerQueue workerQueue;
+	private final PythonCacheLoaderQueue workerQueue;
 	private final Halo halo;
 	private final List<? extends RandomAccessible<? extends NativeType<?>>> inputs;
 
 	public PythonCacheLoader(
-			CellGrid grid,
-			int numWorkers,
-			String code,
-			String init,
-			T t,
-			A a,
-			Halo halo,
-			Collection<? extends RandomAccessible<? extends NativeType<?>>> inputs) throws InterruptedException, JepException {
+			final CellGrid grid,
+			final PythonCacheLoaderQueue workerQueue,
+			final String code,
+			final T t,
+			final A a,
+			final Halo halo,
+			final Collection<? extends RandomAccessible<? extends NativeType<?>>> inputs) throws InterruptedException, JepException {
 		this.grid = grid;
 		this.code = code;
-		this.workerQueue = new PythonWorkerQueue(numWorkers, init);
+		this.workerQueue = workerQueue;
 		this.t = t;
 		this.a = a;
 		this.halo = halo == null ? Halo.empty(grid.numDimensions()) : halo;
@@ -60,15 +62,14 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 	}
 
 	public PythonCacheLoader(
-			CellGrid grid,
-			int numWorkers,
-			String code,
-			String init,
-			T t,
-			A a,
-			Halo halo,
-			RandomAccessible<? extends NativeType<?>>... inputs) throws InterruptedException, JepException {
-		this(grid, numWorkers, code, init, t, a, halo, Arrays.asList(inputs));
+			final CellGrid grid,
+			final PythonCacheLoaderQueue workerQueue,
+			final String code,
+			final T t,
+			final A a,
+			final Halo halo,
+			final RandomAccessible<? extends NativeType<?>>... inputs) throws InterruptedException, JepException {
+		this(grid, workerQueue, code, t, a, halo, Arrays.asList(inputs));
 	}
 
 	@Override
@@ -106,6 +107,14 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 
 		final A access = a.newInstance(buffer, isValid);
 		return new Cell<>(dim, min, access);
+	}
+
+	public CachedCellImg<T, A> createCachedCellImg(final LoaderCache<Long, Cell<A>> loaderCache) {
+		return new CachedCellImg<>(grid, t, loaderCache.withLoader(this), a);
+	}
+
+	public CachedCellImg<T, A> createCachedCellImg(final long maximumSize) {
+		return createCachedCellImg(new GuardedStrongRefLoaderCache<>(maximumSize));
 	}
 
 	private static ByteBuffer appropriateDirectBuffer(final NativeType<?> t, final Interval interval) {

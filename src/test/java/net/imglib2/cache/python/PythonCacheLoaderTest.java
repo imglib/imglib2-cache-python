@@ -1,14 +1,11 @@
 package net.imglib2.cache.python;
 
 import jep.JepException;
-import net.imglib2.cache.Cache;
 import net.imglib2.cache.img.CachedCellImg;
-import net.imglib2.cache.ref.GuardedStrongRefLoaderCache;
 import net.imglib2.img.array.ArrayImg;
 import net.imglib2.img.array.ArrayImgs;
 import net.imglib2.img.basictypeaccess.array.DoubleArray;
 import net.imglib2.img.basictypeaccess.nio.FloatBufferAccess;
-import net.imglib2.img.cell.Cell;
 import net.imglib2.img.cell.CellGrid;
 import net.imglib2.type.numeric.real.DoubleType;
 import net.imglib2.type.numeric.real.FloatType;
@@ -45,9 +42,8 @@ public class PythonCacheLoaderTest {
 
 		final CellGrid grid = new CellGrid(dims, bs);
 		final ArrayImg<DoubleType, DoubleArray> range = ArrayImgs.doubles(rangeData, dims);
-		final PythonCacheLoader<FloatType, FloatBufferAccess> loader = new PythonCacheLoader<>(grid, 3, code, init, new FloatType(), new FloatBufferAccess(1), null, Views.extendZero(range));
-		final Cache<Long, Cell<FloatBufferAccess>> cache = new GuardedStrongRefLoaderCache<Long, Cell<FloatBufferAccess>>(30).withLoader(loader);
-		final CachedCellImg<FloatType, FloatBufferAccess> img = new CachedCellImg<>(grid, new FloatType(), cache, new FloatBufferAccess());
+		final PythonCacheLoader<FloatType, FloatBufferAccess> loader = new PythonCacheLoader<>(grid, new PythonCacheLoaderQueue(3, init), code, new FloatType(), new FloatBufferAccess(1), null, Views.extendZero(range));
+		final CachedCellImg<FloatType, FloatBufferAccess> img = loader.createCachedCellImg(30);
 		final double[] numpyAverages = StreamSupport.stream(Views.flatIterable(img).spliterator(), false).mapToDouble(FloatType::getRealDouble).toArray();
 			Assert.assertArrayEquals(averages, numpyAverages, 0.0);
 	}
@@ -73,9 +69,8 @@ public class PythonCacheLoaderTest {
 
 		final CellGrid grid = new CellGrid(dims, bs);
 		final ArrayImg<DoubleType, DoubleArray> range = ArrayImgs.doubles(rangeData, dims);
-		final PythonCacheLoader<FloatType, FloatBufferAccess> loader = new PythonCacheLoader<>(grid, 3, code, init, new FloatType(), new FloatBufferAccess(1), new Halo(2, 3), Views.extendZero(range));
-		final Cache<Long, Cell<FloatBufferAccess>> cache = new GuardedStrongRefLoaderCache<Long, Cell<FloatBufferAccess>>(30).withLoader(loader);
-		final CachedCellImg<FloatType, FloatBufferAccess> img = new CachedCellImg<>(grid, new FloatType(), cache, new FloatBufferAccess());
+		final PythonCacheLoader<FloatType, FloatBufferAccess> loader = new PythonCacheLoader<>(grid, new PythonCacheLoaderQueue(3, init), code, new FloatType(), new FloatBufferAccess(1), new Halo(2, 3), Views.extendZero(range));
+		final CachedCellImg<FloatType, FloatBufferAccess> img = loader.createCachedCellImg(30);
 		final double[] numpyAverages = StreamSupport.stream(Views.flatIterable(img).spliterator(), false).mapToDouble(FloatType::getRealDouble).toArray();
 		Assert.assertArrayEquals(rangeData, numpyAverages, 0.0);
 	}
