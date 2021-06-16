@@ -1,6 +1,6 @@
 package net.imglib2.cache.python;
 
-import jep.JepException;
+import jep.DirectNDArray;
 import net.imglib2.FinalInterval;
 import net.imglib2.Interval;
 import net.imglib2.RandomAccessible;
@@ -25,6 +25,7 @@ import net.imglib2.loops.LoopBuilder;
 import net.imglib2.type.NativeType;
 import net.imglib2.util.Intervals;
 import net.imglib2.util.Util;
+import net.imglib2.view.ExtendedRandomAccessibleInterval;
 import net.imglib2.view.Views;
 
 import java.nio.Buffer;
@@ -33,8 +34,100 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A>> implements CacheLoader<Long, Cell<A>> {
+
+	public interface InputGenerator {
+		DirectNDArray<?> createInputFor(Interval interval);
+
+		static int[] getNDArrayShape(final Interval interval) {
+			return reversedArray(Intervals.dimensionsAsIntArray(interval));
+		}
+
+		@SuppressWarnings("unchecked")
+		static InputGenerator forRandomAccessible(final RandomAccessible<? extends NativeType<?>> source) {
+			if (source instanceof ExtendedRandomAccessibleInterval<?, ?>) {
+				final CachedCellImg<?, ?> img = getCachedCellImgFromSource(source);
+				if (img != null && img.getAccessType() instanceof BufferAccess)
+					return new ForCachedCellImg((CachedCellImg<?, ? extends BufferAccess<?>>) img, source);
+			}
+
+			if (source instanceof CachedCellImg<?, ?>) {
+				final CachedCellImg<?, ?> img = (CachedCellImg<?, ?>) source;
+				if (img.getAccessType() instanceof BufferAccess)
+					return new ForCachedCellImg((CachedCellImg<?, ? extends BufferAccess<?>>) img);
+			}
+
+			return new ForRandomAccessible(source);
+		}
+
+		class ForRandomAccessible implements InputGenerator {
+			private final RandomAccessible<? extends NativeType<?>> source;
+
+			public ForRandomAccessible(RandomAccessible<? extends NativeType<?>> source) {
+				this.source = source;
+			}
+
+			@Override
+			public DirectNDArray<?> createInputFor(Interval interval) {
+				return new DirectNDArray<>(
+						copyToBuffer(source, interval),
+						getNDArrayShape(interval));
+			}
+		}
+
+		class ForCachedCellImg implements InputGenerator {
+			private final CachedCellImg<?, ? extends BufferAccess<?>> img;
+			private final ForRandomAccessible fallback;
+			private final int[] cellDimensions;
+
+			public ForCachedCellImg(final CachedCellImg<?, ? extends BufferAccess<?>> img) {
+				this(img, img);
+			}
+
+			public ForCachedCellImg(
+					final CachedCellImg<?, ? extends BufferAccess<?>> img,
+					final RandomAccessible<? extends NativeType<?>> fallback
+					) {
+				this.img = img;
+				this.fallback = new ForRandomAccessible(fallback);
+				this.cellDimensions = new int[img.numDimensions()];
+				this.img.getCellGrid().cellDimensions(this.cellDimensions);
+			}
+
+
+			@Override
+			public DirectNDArray<?> createInputFor(final Interval interval) {
+				if (isCompatible(interval)) {
+					final long[] position = new long[interval.numDimensions()];
+					this.img.getCellGrid().getCellPosition(Intervals.minAsLongArray(interval), position);
+					final Buffer buffer = (Buffer) this.img.getCells().getAt(position).getData().getCurrentStorageArray();
+					if (buffer.isDirect())
+						return new DirectNDArray<>(buffer, getNDArrayShape(interval));
+				}
+				return fallback.createInputFor(interval);
+			}
+
+			private boolean isCompatible(final Interval interval) {
+				return isMinCompatible(interval) && isDimCompatible(interval);
+			}
+
+			private boolean isMinCompatible(final Interval interval) {
+				for (int d = 0; d < interval.numDimensions(); ++d)
+					if (interval.min(d) % this.cellDimensions[d] != 0)
+						return false;
+				return true;
+			}
+
+			private boolean isDimCompatible(final Interval interval) {
+				for (int d = 0; d < interval.numDimensions(); ++d)
+					if (interval.dimension(d) != this.cellDimensions[d] && interval.max(d) != this.img.max(d))
+						return false;
+				return true;
+			}
+		}
+	}
 
 	private final CellGrid grid;
 	private final String code;
@@ -42,7 +135,8 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 	private final A a;
 	private final PythonCacheLoaderQueue workerQueue;
 	private final Halo halo;
-	private final List<? extends RandomAccessible<? extends NativeType<?>>> inputs;
+//	private final List<? extends RandomAccessible<? extends NativeType<?>>> inputs;
+	private final List<? extends InputGenerator> inputGenerators;
 
 	public PythonCacheLoader(
 			final CellGrid grid,
@@ -51,14 +145,14 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 			final T t,
 			final A a,
 			final Halo halo,
-			final Collection<? extends RandomAccessible<? extends NativeType<?>>> inputs) throws InterruptedException, JepException {
+			final Collection<? extends InputGenerator> inputGenerators) {
 		this.grid = grid;
 		this.code = code;
 		this.workerQueue = workerQueue;
 		this.t = t;
 		this.a = a;
 		this.halo = halo == null ? Halo.empty(grid.numDimensions()) : halo;
-		this.inputs = new ArrayList<>(inputs);
+		this.inputGenerators = new ArrayList<>(inputGenerators);
 	}
 
 	public PythonCacheLoader(
@@ -68,8 +162,50 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 			final T t,
 			final A a,
 			final Halo halo,
-			final RandomAccessible<? extends NativeType<?>>... inputs) throws InterruptedException, JepException {
+			final InputGenerator... inputs) {
 		this(grid, workerQueue, code, t, a, halo, Arrays.asList(inputs));
+	}
+
+	public static <T extends NativeType<T>, A extends BufferAccess<A>> PythonCacheLoader<T, A> fromRandomAccessibles(
+			final CellGrid grid,
+			final PythonCacheLoaderQueue workerQueue,
+			final String code,
+			final T t,
+			final A a,
+			final Halo halo,
+			final Collection<? extends RandomAccessible<? extends NativeType<?>>> inputs) {
+		return new PythonCacheLoader<>(grid, workerQueue, code, t, a, halo, inputs.stream().map(InputGenerator::forRandomAccessible).collect(Collectors.toList()));
+	}
+
+	public static <T extends NativeType<T>, A extends BufferAccess<A>> PythonCacheLoader<T, A> fromRandomAccessibles(
+			final CellGrid grid,
+			final PythonCacheLoaderQueue workerQueue,
+			final String code,
+			final T t,
+			final A a,
+			final Halo halo,
+			final RandomAccessible<? extends NativeType<?>>... inputs) {
+		return fromRandomAccessibles(grid, workerQueue, code, t, a, halo, Arrays.asList(inputs));
+	}
+
+	public static <T extends NativeType<T>> PythonCacheLoader<T, ? extends BufferAccess<?>> fromRandomAccessibles(
+			final CellGrid grid,
+			final PythonCacheLoaderQueue workerQueue,
+			final String code,
+			final T t,
+			final Halo halo,
+			final Collection<? extends RandomAccessible<? extends NativeType<?>>> inputs) {
+		return fromRandomAccessibles(grid, workerQueue, code, t, (BufferAccess) bufferAccessFor(t), halo, inputs);
+	}
+
+	public static <T extends NativeType<T>> PythonCacheLoader<T, ? extends BufferAccess<?>> fromRandomAccessibles(
+			final CellGrid grid,
+			final PythonCacheLoaderQueue workerQueue,
+			final String code,
+			final T t,
+			final Halo halo,
+			final RandomAccessible<? extends NativeType<?>>... inputs) {
+		return fromRandomAccessibles(grid, workerQueue, code, t, halo, Arrays.asList(inputs));
 	}
 
 	@Override
@@ -89,10 +225,10 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 		final ByteBuffer buffer = appropriateDirectBuffer(t, interval);
 
 		// This redundant cast is necessary to compile with OpenJDK 8. Why?
-		final Buffer[] inputs = (Buffer[]) this.inputs
+		final DirectNDArray<?>[] inputs = this.inputGenerators
 				.stream()
-				.map(g -> copyToBuffer((RandomAccessible) g, extendedInterval))
-				.toArray(Buffer[]::new);
+				.map(g -> g.createInputFor(extendedInterval))
+				.toArray(DirectNDArray[]::new);
 
 
 		boolean isValid = true;
@@ -147,6 +283,29 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 		}
 	}
 
+	private static BufferAccess<?> bufferAccessFor(final NativeType<?> t) {
+		switch (t.getNativeTypeFactory().getPrimitiveType()) {
+			case BOOLEAN:
+			case BYTE:
+				return new ByteBufferAccess(1);
+			case CHAR:
+				return new CharBufferAccess(1);
+			case SHORT:
+				return new ShortBufferAccess(1);
+			case INT:
+				return new IntBufferAccess(1);
+			case FLOAT:
+				return new FloatBufferAccess(1);
+			case LONG:
+				return new LongBufferAccess(1);
+			case DOUBLE:
+				return new DoubleBufferAccess(1);
+			case UNDEFINED:
+			default:
+				throw new IllegalArgumentException("Unknown type: " + t);
+		}
+	}
+
 	private static Buffer asTypedBuffer(final ByteBuffer buffer, final NativeType<?> t) {
 		switch (t.getNativeTypeFactory().getPrimitiveType()) {
 			case BOOLEAN:
@@ -194,22 +353,41 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 		}
 	}
 
-	private static <T extends NativeType<T>> Buffer copyToBuffer(final RandomAccessible<T> source, final Interval interval) {
+	private static Buffer copyToBuffer(final RandomAccessible<? extends NativeType<?>> source, final Interval interval) {
 		return copyToBuffer(Views.interval(source, interval));
 	}
 
-	private static <T extends NativeType<T>> Buffer copyToBuffer(final RandomAccessibleInterval<T> source) {
+	@SuppressWarnings({"unchecked", "rawtypes"})
+	private static Buffer copyToBuffer(final RandomAccessibleInterval<? extends NativeType<?>> source) {
 		final ByteBuffer buffer = appropriateDirectBuffer(Util.getTypeFromInterval(source).createVariable(), source);
-		return copyToBuffer(source, buffer);
+		return copyToBuffer((RandomAccessibleInterval) source, buffer);
 	}
 
 	@SuppressWarnings({"unchecked", "rawtypes"})
-	private static <T extends NativeType<T>, A extends BufferAccess<A>> Buffer copyToBuffer(final RandomAccessibleInterval<T> source, final ByteBuffer buffer) {
+	private static <T extends NativeType<T>, A extends BufferAccess<A>> Buffer copyToBuffer(
+			final RandomAccessibleInterval<T> source,
+			final ByteBuffer buffer) {
 		final T t = Util.getTypeFromInterval(source).createVariable();
 		final A a = asAccess(buffer, t);
 		final ArrayImg<T, A> target = new ArrayImg<>(a, Intervals.dimensionsAsLongArray(source), t.getEntitiesPerPixel());
 		target.setLinkedType((T) t.getNativeTypeFactory().createLinkedType((NativeImg) target));
 		LoopBuilder.setImages(target, source).forEachPixel(T::set);
 		return asTypedBuffer(buffer, t);
+	}
+
+	private static int[] reversedArray(final int[] array) {
+		final int[] reversedArray = new int[array.length];
+		for (int i = 0, k = array.length - 1; i < array.length; ++i, --k)
+			reversedArray[i] = array[k];
+		return reversedArray;
+	}
+
+	private static CachedCellImg<?, ?> getCachedCellImgFromSource(final RandomAccessible<? extends NativeType<?>> source) {
+		if (source instanceof ExtendedRandomAccessibleInterval<?, ?>) {
+			final ExtendedRandomAccessibleInterval<?, ?> rai = (ExtendedRandomAccessibleInterval<?, ?>) source;
+			if (rai.getSource() instanceof CachedCellImg<?, ?>)
+				return (CachedCellImg<?, ?>) rai.getSource();
+		}
+		return null;
 	}
 }

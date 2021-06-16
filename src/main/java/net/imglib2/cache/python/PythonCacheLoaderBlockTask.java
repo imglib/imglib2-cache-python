@@ -5,11 +5,10 @@ import jep.JepException;
 import jep.SharedInterpreter;
 
 import java.nio.Buffer;
-import java.util.stream.Stream;
 
 public class PythonCacheLoaderBlockTask implements PythonTask<Void> {
 	private final Buffer buffer;
-	private final Buffer[] inputs;
+	private final DirectNDArray<?>[] inputs;
 	private final long index;
 	private final long[] min;
 	private final long[] max;
@@ -17,7 +16,7 @@ public class PythonCacheLoaderBlockTask implements PythonTask<Void> {
 	private final Halo halo;
 	private final String code;
 
-	public PythonCacheLoaderBlockTask(Buffer buffer, Buffer[] inputs, long index, long[] min, long[] max, Halo halo, String code) {
+	public PythonCacheLoaderBlockTask(Buffer buffer, DirectNDArray<?>[] inputs, long index, long[] min, long[] max, Halo halo, String code) {
 		this.buffer = buffer;
 		this.inputs = inputs;
 		this.index = index;
@@ -51,7 +50,7 @@ public class PythonCacheLoaderBlockTask implements PythonTask<Void> {
 		if (!buffer.isDirect())
 			throw new RuntimeException("Expected direct buffer but got " + buffer);
 		python.set("_buf", new DirectNDArray<>(buffer, dims));
-		python.set("_inputs", Stream.of(inputs).map(i -> new DirectNDArray<>(i, adjustedDims)).toArray(DirectNDArray[]::new));
+		python.set("_inputs", this.inputs);
 		python.set("_index", index);
 		python.set("_min", reversedArray(min));
 		python.set("_max", reversedArray(max));

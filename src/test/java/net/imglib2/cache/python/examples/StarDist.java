@@ -10,7 +10,7 @@ import net.imglib2.cache.img.CachedCellImg;
 import net.imglib2.cache.python.Halo;
 import net.imglib2.cache.python.PythonCacheLoader;
 import net.imglib2.cache.python.PythonCacheLoaderQueue;
-import net.imglib2.img.basictypeaccess.nio.LongBufferAccess;
+import net.imglib2.img.basictypeaccess.nio.BufferAccess;
 import net.imglib2.img.cell.CellGrid;
 import net.imglib2.type.numeric.integer.LongType;
 
@@ -43,14 +43,13 @@ public class StarDist {
 		final long[] dims = {512, 512};
 		final int[] bs = {80, 90};
 		final CellGrid grid = new CellGrid(dims, bs);
-		final PythonCacheLoader<LongType, LongBufferAccess> loader = new PythonCacheLoader<>(
+		final PythonCacheLoader<LongType, ? extends BufferAccess<?>> loader = PythonCacheLoader.fromRandomAccessibles(
 				grid,
 				new PythonCacheLoaderQueue(3, init),
 				code,
 				new LongType(),
-				new LongBufferAccess(1),
 				Halo.empty(2));
-		final CachedCellImg<LongType, LongBufferAccess> img = loader.createCachedCellImg(30);
+		final CachedCellImg<LongType, ? extends BufferAccess<?>> img = loader.createCachedCellImg(30);
 
 		final BdvStackSource<?> bdv = BdvFunctions.show(
 				VolatileViews.wrapAsVolatile(img, new SharedQueue(10, 1)),
