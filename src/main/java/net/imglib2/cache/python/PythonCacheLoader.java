@@ -353,7 +353,7 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 		}
 	}
 
-	private static Buffer copyToBuffer(final RandomAccessible<? extends NativeType<?>> source, final Interval interval) {
+	public static Buffer copyToBuffer(final RandomAccessible<? extends NativeType<?>> source, final Interval interval) {
 		return copyToBuffer(Views.interval(source, interval));
 	}
 

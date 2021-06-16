@@ -1,19 +1,24 @@
 package net.imglib2.cache.python;
 
+import jep.DirectNDArray;
 import jep.JepException;
 import net.imglib2.Cursor;
+import net.imglib2.FinalInterval;
 import net.imglib2.RandomAccessibleInterval;
 import net.imglib2.cache.img.CachedCellImg;
 import net.imglib2.img.array.ArrayImg;
 import net.imglib2.img.array.ArrayImgs;
 import net.imglib2.img.basictypeaccess.array.DoubleArray;
+import net.imglib2.img.basictypeaccess.array.ShortArray;
 import net.imglib2.img.basictypeaccess.nio.BufferAccess;
+import net.imglib2.img.basictypeaccess.nio.ShortBufferAccess;
 import net.imglib2.img.cell.CellGrid;
 import net.imglib2.type.numeric.IntegerType;
 import net.imglib2.type.numeric.RealType;
 import net.imglib2.type.numeric.integer.ByteType;
 import net.imglib2.type.numeric.integer.IntType;
 import net.imglib2.type.numeric.integer.LongType;
+import net.imglib2.type.numeric.integer.ShortType;
 import net.imglib2.type.numeric.real.DoubleType;
 import net.imglib2.type.numeric.real.FloatType;
 import net.imglib2.util.Intervals;
@@ -131,6 +136,35 @@ public class PythonCacheLoaderTest {
 		for (int i = 0; c.hasNext(); ++i)
 			primitiveArray[i] = c.next().getIntegerLong();
 		return primitiveArray;
+	}
+
+	@Test
+	public void testInconsistentNumDimensions() throws InterruptedException, JepException {
+		final short[] inputData = {
+				1, 5, 3,
+				4, 2, 6
+		};
+		final ArrayImg<ShortType, ShortArray> inputImg = ArrayImgs.shorts(inputData, 3, 2);
+		final PythonCacheLoader.InputGenerator input = interval -> {
+			final FinalInterval extendedInterval = Intervals.addDimension(interval, 0, 1);
+			return new DirectNDArray<>(
+					PythonCacheLoader.copyToBuffer(inputImg, extendedInterval),
+					PythonCacheLoader.InputGenerator.getNDArrayShape(extendedInterval)
+			);
+		};
+		final CellGrid grid = new CellGrid(new long[] {3}, new int[] {2});
+		try(final PythonCacheLoaderQueue queue = new PythonCacheLoaderQueue(1, "import numpy as np")) {
+			final PythonCacheLoader<ShortType, ShortBufferAccess> outputLoader = new PythonCacheLoader<>(
+					grid,
+					queue,
+					"block.data[...] = np.max(block.inputs[0], axis=0)",
+					new ShortType(),
+					new ShortBufferAccess(1),
+					Halo.empty(1), input);
+			final CachedCellImg<ShortType, ShortBufferAccess> output = outputLoader.createCachedCellImg(3);
+			Assert.assertArrayEquals(new long[] {4, 5, 6}, toPrimitiveLongArray(output));
+		}
+
 	}
 
 }
