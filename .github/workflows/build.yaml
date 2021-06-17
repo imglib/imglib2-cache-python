@@ -38,3 +38,7 @@ jobs:
         run: PYTHONHOME=$(dirname $(dirname $(which python))) mvn --batch-mode test
       - name: Package
         run: PYTHONHOME=$(dirname $(dirname $(which python))) mvn --batch-mode package
+      - name: Jacoco Report
+        run: mvn jacoco:report
+      - name: Code Coverage Gate
+        run: .github/workflows/code-coverage.sh
