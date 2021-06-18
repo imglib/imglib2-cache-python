@@ -56,7 +56,7 @@ public class PythonCacheLoaderTest {
 		final CellGrid grid = new CellGrid(dims, bs);
 		final ArrayImg<DoubleType, DoubleArray> range = ArrayImgs.doubles(rangeData, dims);
 		final PythonCacheLoader<DoubleType, ? extends BufferAccess<?>> loader = PythonCacheLoader
-				.fromRandomAccessibles(grid, new PythonCacheLoaderQueue(3, init), code, new DoubleType(), null, Views.extendZero(range));
+				.fromRandomAccessibles(grid, new PythonCacheLoaderQueue(3, init), code, new DoubleType(), Views.extendZero(range));
 		final CachedCellImg<DoubleType, ? extends BufferAccess<?>> img = loader.createCachedCellImg(30);
 		final double[] numpyAverages = StreamSupport.stream(Views.flatIterable(img).spliterator(), false).mapToDouble(DoubleType::getRealDouble).toArray();
 			Assert.assertArrayEquals(averages, numpyAverages, 0.0);
@@ -154,7 +154,7 @@ public class PythonCacheLoaderTest {
 		};
 		final CellGrid grid = new CellGrid(new long[] {3}, new int[] {2});
 		try(final PythonCacheLoaderQueue queue = new PythonCacheLoaderQueue(1, "import numpy as np")) {
-			final PythonCacheLoader<ShortType, ShortBufferAccess> outputLoader = new PythonCacheLoader<>(
+			final PythonCacheLoader<ShortType, ShortBufferAccess> outputLoader = PythonCacheLoader.fromInputGenerators(
 					grid,
 					queue,
 					"block.data[...] = np.max(block.inputs[0], axis=0)",

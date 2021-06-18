@@ -11,6 +11,13 @@ import net.imglib2.cache.img.CachedCellImg;
 import net.imglib2.cache.ref.GuardedStrongRefLoaderCache;
 import net.imglib2.img.NativeImg;
 import net.imglib2.img.array.ArrayImg;
+import net.imglib2.img.basictypeaccess.ByteAccess;
+import net.imglib2.img.basictypeaccess.CharAccess;
+import net.imglib2.img.basictypeaccess.DoubleAccess;
+import net.imglib2.img.basictypeaccess.FloatAccess;
+import net.imglib2.img.basictypeaccess.IntAccess;
+import net.imglib2.img.basictypeaccess.LongAccess;
+import net.imglib2.img.basictypeaccess.ShortAccess;
 import net.imglib2.img.basictypeaccess.nio.BufferAccess;
 import net.imglib2.img.basictypeaccess.nio.ByteBufferAccess;
 import net.imglib2.img.basictypeaccess.nio.CharBufferAccess;
@@ -135,10 +142,9 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 	private final A a;
 	private final PythonCacheLoaderQueue workerQueue;
 	private final Halo halo;
-//	private final List<? extends RandomAccessible<? extends NativeType<?>>> inputs;
 	private final List<? extends InputGenerator> inputGenerators;
 
-	public PythonCacheLoader(
+	private PythonCacheLoader(
 			final CellGrid grid,
 			final PythonCacheLoaderQueue workerQueue,
 			final String code,
@@ -146,6 +152,8 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 			final A a,
 			final Halo halo,
 			final Collection<? extends InputGenerator> inputGenerators) {
+		if (!isCorrectAccessFor(t, a))
+			throw new IllegalArgumentException("Access " + a + " not compatible with type " + t);
 		this.grid = grid;
 		this.code = code;
 		this.workerQueue = workerQueue;
@@ -155,7 +163,7 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 		this.inputGenerators = new ArrayList<>(inputGenerators);
 	}
 
-	public PythonCacheLoader(
+	private PythonCacheLoader(
 			final CellGrid grid,
 			final PythonCacheLoaderQueue workerQueue,
 			final String code,
@@ -166,6 +174,28 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 		this(grid, workerQueue, code, t, a, halo, Arrays.asList(inputs));
 	}
 
+	public static <T extends NativeType<T>, A extends BufferAccess<A>> PythonCacheLoader<T, A> fromInputGenerators(
+			final CellGrid grid,
+			final PythonCacheLoaderQueue workerQueue,
+			final String code,
+			final T t,
+			final A a,
+			final Halo halo,
+			final Collection<? extends InputGenerator> inputGenerators) {
+		return new PythonCacheLoader<>(grid, workerQueue, code, t, a, halo, inputGenerators);
+	}
+
+	public static <T extends NativeType<T>, A extends BufferAccess<A>> PythonCacheLoader<T, A> fromInputGenerators(
+			final CellGrid grid,
+			final PythonCacheLoaderQueue workerQueue,
+			final String code,
+			final T t,
+			final A a,
+			final Halo halo,
+			final InputGenerator... inputs) {
+		return fromInputGenerators(grid, workerQueue, code, t, a, halo, Arrays.asList(inputs));
+	}
+
 	public static <T extends NativeType<T>, A extends BufferAccess<A>> PythonCacheLoader<T, A> fromRandomAccessibles(
 			final CellGrid grid,
 			final PythonCacheLoaderQueue workerQueue,
@@ -174,7 +204,7 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 			final A a,
 			final Halo halo,
 			final Collection<? extends RandomAccessible<? extends NativeType<?>>> inputs) {
-		return new PythonCacheLoader<>(grid, workerQueue, code, t, a, halo, inputs.stream().map(InputGenerator::forRandomAccessible).collect(Collectors.toList()));
+		return fromInputGenerators(grid, workerQueue, code, t, a, halo, inputs.stream().map(InputGenerator::forRandomAccessible).collect(Collectors.toList()));
 	}
 
 	public static <T extends NativeType<T>, A extends BufferAccess<A>> PythonCacheLoader<T, A> fromRandomAccessibles(
@@ -206,6 +236,24 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 			final Halo halo,
 			final RandomAccessible<? extends NativeType<?>>... inputs) {
 		return fromRandomAccessibles(grid, workerQueue, code, t, halo, Arrays.asList(inputs));
+	}
+
+	public static <T extends NativeType<T>> PythonCacheLoader<T, ? extends BufferAccess<?>> fromRandomAccessibles(
+			final CellGrid grid,
+			final PythonCacheLoaderQueue workerQueue,
+			final String code,
+			final T t,
+			final Collection<? extends RandomAccessible<? extends NativeType<?>>> inputs) {
+		return fromRandomAccessibles(grid, workerQueue, code, t, (BufferAccess) bufferAccessFor(t), Halo.empty(grid.numDimensions()), inputs);
+	}
+
+	public static <T extends NativeType<T>> PythonCacheLoader<T, ? extends BufferAccess<?>> fromRandomAccessibles(
+			final CellGrid grid,
+			final PythonCacheLoaderQueue workerQueue,
+			final String code,
+			final T t,
+			final RandomAccessible<? extends NativeType<?>>... inputs) {
+		return fromRandomAccessibles(grid, workerQueue, code, t, Arrays.asList(inputs));
 	}
 
 	@Override
@@ -347,6 +395,29 @@ public class PythonCacheLoader<T extends NativeType<T>, A extends BufferAccess<A
 				return (A) new LongBufferAccess(buffer, true);
 			case DOUBLE:
 				return (A) new DoubleBufferAccess(buffer, true);
+			case UNDEFINED:
+			default:
+				throw new IllegalArgumentException("Unknown type: " + t);
+		}
+	}
+
+	private static boolean isCorrectAccessFor(final NativeType<?> t, final BufferAccess<?> a) {
+		switch (t.getNativeTypeFactory().getPrimitiveType()) {
+			case BOOLEAN:
+			case BYTE:
+				return a instanceof ByteAccess;
+			case CHAR:
+				return a instanceof CharAccess;
+			case SHORT:
+				return a instanceof ShortAccess;
+			case INT:
+				return a instanceof IntAccess;
+			case FLOAT:
+				return a instanceof FloatAccess;
+			case LONG:
+				return a instanceof LongAccess;
+			case DOUBLE:
+				return a instanceof DoubleAccess;
 			case UNDEFINED:
 			default:
 				throw new IllegalArgumentException("Unknown type: " + t);
