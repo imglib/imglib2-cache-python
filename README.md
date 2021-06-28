@@ -35,5 +35,7 @@ All packages that are available to that interpreter will also be available for u
 ## Usage
 
 TODO
+Examples:
+ - [StarDist](src/test/java/net/imglib2/cache/python/examples/StarDist.java)
 
 **Note**: The `CachedCellImg` is backed by a cache that, for some implementations, may relay on the JVM garbage to free unused entries. Direct buffers are used for shared memory access between Java and CPython but their native memory allocation does not count towards the JVM heap, i.e. the garbage collector will not remove unused entries from the cache. To avoid `OutOfMemoryError`s, we recommend using a bounded cache like `GuardedStrongRefLoaderCache`.
