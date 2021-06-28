@@ -5,14 +5,23 @@ import bdv.util.BdvOptions;
 import bdv.util.BdvStackSource;
 import bdv.util.volatiles.SharedQueue;
 import bdv.util.volatiles.VolatileViews;
+import ij.ImagePlus;
+import ij.io.Opener;
 import jep.JepException;
 import net.imglib2.cache.img.CachedCellImg;
 import net.imglib2.cache.python.Halo;
 import net.imglib2.cache.python.PythonCacheLoader;
 import net.imglib2.cache.python.PythonCacheLoaderQueue;
+import net.imglib2.img.Img;
 import net.imglib2.img.basictypeaccess.nio.BufferAccess;
 import net.imglib2.img.cell.CellGrid;
+import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.type.numeric.integer.LongType;
+import net.imglib2.type.numeric.integer.UnsignedShortType;
+import net.imglib2.view.Views;
+
+import java.io.IOException;
+import java.io.InputStream;
 
 /**
  * Example for making predictions using stardist: https://github.com/stardist/stardist
@@ -20,35 +29,32 @@ import net.imglib2.type.numeric.integer.LongType;
  * It may be necessary to set PYTHONHOME appropriately.
  */
 public class StarDist {
-	public static void main(String... args) throws InterruptedException, JepException {
+	public static void main(String... args) throws InterruptedException, JepException, IOException {
 		final String init = String.join(
 				"\n",
 				"from stardist.data import test_image_nuclei_2d",
 				"from stardist.models import StarDist2D",
 				"from stardist.plot import render_label",
 				"from csbdeep.utils import normalize",
-				"img = test_image_nuclei_2d()",
 				"model = StarDist2D.from_pretrained('2D_versatile_fluo')"
 		);
 		final String code = String.join(
 				"\n",
-				"halo = 10",
-				"offsets = tuple(min(m, halo) for m in block.min)",
-				"print(f'{offsets=}')",
-				"slicing = tuple(slice(m - o, M+1 + halo) for o, m, M in zip(offsets, block.min, block.max))",
-				"# slicing = tuple(slice(m, M+1) for m, M in zip(block.min, block.max))",
-				"labels, _ = model.predict_instances(normalize(img[slicing]))",
-				"block.data[...] = labels[tuple(slice(o, o + s) for o, s in zip(offsets, block.data.shape))] # labels"
+				"labels, _ = model.predict_instances(normalize(block.inputs[0]))",
+				"block.data[...] = labels[block.halo]"
 		);
 		final long[] dims = {512, 512};
 		final int[] bs = {80, 90};
 		final CellGrid grid = new CellGrid(dims, bs);
+		final ImagePlus rawImp = getExampleImage();
+		final Img<UnsignedShortType> raw = ImageJFunctions.wrapShort(rawImp);
 		final PythonCacheLoader<LongType, ? extends BufferAccess<?>> loader = PythonCacheLoader.fromRandomAccessibles(
 				grid,
 				new PythonCacheLoaderQueue(3, init),
 				code,
 				new LongType(),
-				Halo.empty(2));
+				new Halo(10, 10),
+				Views.extendZero(raw));
 		final CachedCellImg<LongType, ? extends BufferAccess<?>> img = loader.createCachedCellImg(30);
 
 		final BdvStackSource<?> bdv = BdvFunctions.show(
@@ -56,5 +62,12 @@ public class StarDist {
 				"stardist",
 				BdvOptions.options().numRenderingThreads(10).is2D());
 		bdv.setDisplayRange(0.0, 8.0);
+	}
+
+	private static ImagePlus getExampleImage() throws IOException {
+		try(final InputStream is = StarDist.class.getClassLoader().getResourceAsStream("test-image-nuclei-2d.tif")) {
+			final Opener opener = new Opener();
+			return opener.openTiff(is, "Example Image");
+		}
 	}
 }
