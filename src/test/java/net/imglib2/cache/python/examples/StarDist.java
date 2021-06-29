@@ -65,6 +65,8 @@ public class StarDist {
 	}
 
 	private static ImagePlus getExampleImage() throws IOException {
+		// The test image is the test_image_nuclei_2d from stardist.data.
+		// https://github.com/stardist/stardist#pretrained-models-for-2d
 		try(final InputStream is = StarDist.class.getClassLoader().getResourceAsStream("test-image-nuclei-2d.tif")) {
 			final Opener opener = new Opener();
 			return opener.openTiff(is, "Example Image");
