@@ -38,7 +38,7 @@ All packages that are available to that interpreter will also be available for u
 
 To create Python-backed `CachedCellImg`, first create a `PythonCacheLoaderQueue`:
 
-    ``` java
+``` java
 import net.imglib2.cache.python.PythonCacheLoaderQueue;
 
 final int numWorkers = 3;
