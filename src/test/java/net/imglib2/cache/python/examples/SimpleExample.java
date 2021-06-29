@@ -44,6 +44,5 @@ public class SimpleExample {
 		final int maximumCacheSize = 30;
 		final CachedCellImg<LongType, ? extends BufferAccess<?>> img = loader.createCachedCellImg(maximumCacheSize);
 		Views.flatIterable(img).forEach(System.out::println);
-
 	}
 }
