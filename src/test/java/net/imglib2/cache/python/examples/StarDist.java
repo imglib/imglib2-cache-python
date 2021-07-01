@@ -42,7 +42,7 @@ public class StarDist {
 		final PythonCacheLoaderQueue queue = new PythonCacheLoaderQueue(3, init);
 		final CellGrid grid = new CellGrid(dims, bs);
 		final CachedCellImg<UnsignedShortType, ? extends BufferAccess<?>> raw = PythonCacheLoader
-				.fromRandomAccessibles(grid, queue, "block.data[...] = test_image[[slice(m, M+1) for m, M in zip(block.min, block.max)]]", new UnsignedShortType())
+				.fromRandomAccessibles(grid, queue, "block.data[...] = test_image[tuple(slice(m, M+1) for m, M in zip(block.min, block.max))]", new UnsignedShortType())
 				.createCachedCellImg(30);
 		final PythonCacheLoader<LongType, ? extends BufferAccess<?>> loader = PythonCacheLoader.fromRandomAccessibles(
 				grid,
